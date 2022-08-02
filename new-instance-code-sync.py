@@ -38,11 +38,10 @@ codedeployrole = os.environ.get("CodeDeployRole")
 """
 
 def lambda_handler(event, context):
-    print("Received event: " + json.dumps(event, indent=2))
+    print(f"Received event: {json.dumps(event, indent=2)}")
     instance_id=event['detail']['instance-id']
     try:
-        spotid=detect_spot(ec2client,instance_id)
-        if spotid:
+        if spotid := detect_spot(ec2client, instance_id):
             tags=get_tags_from_spot_request(ec2client,instance_id,spotid)
             if ("aws:autoscaling:groupName") in tags:
                 raise CustomException("EC2 is part of autoscaling group...Ignoring")
@@ -60,14 +59,14 @@ def lambda_handler(event, context):
         ec2TagFilters = depresponse['deploymentGroupInfo']['ec2TagFilters']
         if name in str(ec2TagFilters):
             raise CustomException("EC2 has exact name tag as existing EC2's in deployment group..ignoring...")
-        for i in range(len(ec2TagFilters)):
+        for _ in range(len(ec2TagFilters)):
             ec2TagFilters.append({
             'Key': 'Name',
             'Value': name,
             'Type': 'KEY_AND_VALUE'})
         update_response = deployment_group_update(appname, codedeploygroup, ec2TagFilters)
         deploymentId =depresponse['deploymentGroupInfo']['lastSuccessfulDeployment']['deploymentId']
-        print ("DepId is" +deploymentId)
+        print(f"DepId is{deploymentId}")
         depIdResponse=get_dep(deploymentId)
         bucket= depIdResponse['s3Location']['bucket']
         key= depIdResponse['s3Location']['key']
@@ -133,29 +132,27 @@ def deployment_group_tag(appname,codedeploygroup):
 
 
 def deployment_group_update(appname, codedeploygroup, ec2TagFilters):
-    response = client.update_deployment_group(
-            applicationName = appname,
-            currentDeploymentGroupName = codedeploygroup,
-            ec2TagFilters = ec2TagFilters,
-            serviceRoleArn = codedeployrole
-            )
-    return response
+    return client.update_deployment_group(
+        applicationName=appname,
+        currentDeploymentGroupName=codedeploygroup,
+        ec2TagFilters=ec2TagFilters,
+        serviceRoleArn=codedeployrole,
+    )
 
 def get_dep(deploymentId):
     response=client.get_deployment(deploymentId=deploymentId)
     return response['deploymentInfo']['revision']
 
 def deploy_now(appname,codedeploygroup,bucket,key):
-    response = client.create_deployment(
-    applicationName=appname,
-    deploymentGroupName=codedeploygroup,
-    deploymentConfigName='CodeDeployDefault.OneAtATime',
-    description='Test',
-    ignoreApplicationStopFailures=True,
-    updateOutdatedInstancesOnly=True,
-    fileExistsBehavior='OVERWRITE')
-
-    return response
+    return client.create_deployment(
+        applicationName=appname,
+        deploymentGroupName=codedeploygroup,
+        deploymentConfigName='CodeDeployDefault.OneAtATime',
+        description='Test',
+        ignoreApplicationStopFailures=True,
+        updateOutdatedInstancesOnly=True,
+        fileExistsBehavior='OVERWRITE',
+    )
 
 def get_tags_from_spot_request(ec2client,instance_id,spot_instance_request_id):
     response=ec2client.describe_tags(
@@ -170,14 +167,11 @@ def get_tags_from_spot_request(ec2client,instance_id,spot_instance_request_id):
 
             ]
         )
-    tagdict = {};
-    for j in range(len(response['Tags'])):
-        tagdict[response['Tags'][j]['Key']] = response['Tags'][j]['Value']
-    return tagdict
+    return {
+        response['Tags'][j]['Key']: response['Tags'][j]['Value']
+        for j in range(len(response['Tags']))
+    }
 
 def mktags(taglst):
-        tags = []
-        for t in taglst:
-            tags.append({'Key': t, 'Value': taglst[t]})
-        return tags
+    return [{'Key': t, 'Value': taglst[t]} for t in taglst]
 
